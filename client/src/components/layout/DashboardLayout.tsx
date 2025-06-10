@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Navbar from './Navbar';
+import VirtualAssistant from '../chat/VirtualAssistant';
 
 const DashboardLayout = () => {
   return (
@@ -12,6 +13,7 @@ const DashboardLayout = () => {
           <Outlet />
         </div>
       </main>
+      <VirtualAssistant />
     </div>
   );
 };

@@ -1,7 +1,7 @@
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Navbar from './Navbar';
-import VirtualAssistant from '../chat/VirtualAssistant';
+import { VirtualAssistant } from '../chat/VirtualAssistant';
 
 const DashboardLayout = () => {
   return (

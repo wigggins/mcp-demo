@@ -1,0 +1,51 @@
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+
+export class ChatService {
+  private static instance: ChatService;
+
+  private constructor() {}
+
+  public static getInstance(): ChatService {
+    if (!ChatService.instance) {
+      ChatService.instance = new ChatService();
+    }
+    return ChatService.instance;
+  }
+
+  public async sendMessage(message: string): Promise<string> {
+    try {
+      const response = await fetch(`${API_URL}/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ message }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to send message');
+      }
+
+      const data = await response.json();
+      return data.message;
+    } catch (error) {
+      console.error('Error sending message:', error);
+      throw new Error('Failed to send message');
+    }
+  }
+
+  public async clearHistory(): Promise<void> {
+    try {
+      const response = await fetch(`${API_URL}/chat/clear`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to clear chat history');
+      }
+    } catch (error) {
+      console.error('Error clearing chat history:', error);
+      throw new Error('Failed to clear chat history');
+    }
+  }
+} 

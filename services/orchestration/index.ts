@@ -1,16 +1,17 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
-
-// Load environment variables
-dotenv.config();
+import { config } from './config';
+import { OpenAIService } from './services/openai';
 
 const app = express();
-const port = process.env.PORT || 3000;
+const port = config.server.port;
 
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Initialize OpenAI service
+const openAIService = OpenAIService.getInstance();
 
 // Chat endpoint
 app.post('/chat', async (req: Request, res: Response) => {
@@ -21,15 +22,27 @@ app.post('/chat', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Message is required' });
     }
 
-    // For now, just echo back the message
-    const response = {
-      message: `Received: ${message}`,
-      timestamp: new Date().toISOString()
-    };
+    const response = await openAIService.sendMessage(message);
 
-    res.json(response);
+    res.json({
+      message: response,
+      timestamp: new Date().toISOString()
+    });
   } catch (error) {
     console.error('Error in chat endpoint:', error);
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : 'Internal server error' 
+    });
+  }
+});
+
+// Clear conversation history endpoint
+app.post('/chat/clear', (req: Request, res: Response) => {
+  try {
+    openAIService.clearHistory();
+    res.json({ message: 'Conversation history cleared' });
+  } catch (error) {
+    console.error('Error clearing conversation history:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

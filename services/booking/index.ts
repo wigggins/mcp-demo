@@ -47,6 +47,7 @@ app.post('/bookings', (req: Request, res: Response) => {
     };
 
     bookings.push(newBooking);
+    console.log('Booking created:', newBooking);
     res.status(201).json(newBooking);
   } catch (error) {
     console.error('Error creating booking:', error);

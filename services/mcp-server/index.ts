@@ -32,6 +32,32 @@ interface ToolCall {
 // Available tools
 const tools: Tool[] = [
   {
+    name: 'create_booking',
+    description: 'Creates a new booking with the specified details',
+    parameters: {
+      type: 'object',
+      properties: {
+        customerId: {
+          type: 'string',
+          description: 'The ID of the customer making the booking'
+        },
+        serviceId: {
+          type: 'string',
+          description: 'The ID of the service being booked'
+        },
+        startTime: {
+          type: 'string',
+          description: 'The start time of the booking in ISO format'
+        },
+        endTime: {
+          type: 'string',
+          description: 'The end time of the booking in ISO format'
+        }
+      },
+      required: ['customerId', 'serviceId', 'startTime', 'endTime']
+    }
+  },
+  {
     name: 'cancel_booking',
     description: 'Cancels a booking by its ID',
     parameters: {
@@ -49,6 +75,31 @@ const tools: Tool[] = [
 
 // Tool implementations
 const toolImplementations: Record<string, (params: any) => Promise<any>> = {
+  create_booking: async (params: { 
+    customerId: string;
+    serviceId: string;
+    startTime: string;
+    endTime: string;
+  }) => {
+    try {
+      // Map parameters to booking service format
+      const bookingPayload = {
+        customerName: params.customerId, // Map customerId to customerName
+        service: params.serviceId,      // Map serviceId to service
+        date: params.startTime          // Use startTime as date
+      };
+      const response = await axios.post(
+        'http://localhost:3001/bookings',
+        bookingPayload
+      );
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response) {
+        throw new Error(error.response.data.error || 'Failed to create booking');
+      }
+      throw new Error('Failed to create booking');
+    }
+  },
   cancel_booking: async (params: { bookingId: string }) => {
     try {
       const response = await axios.post(

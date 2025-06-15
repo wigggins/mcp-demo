@@ -25,7 +25,7 @@ app.post('/chat', async (req: Request, res: Response) => {
     const response = await openAIService.sendMessage(message);
 
     res.json({
-      message: response,
+      ...response,
       timestamp: new Date().toISOString()
     });
   } catch (error) {

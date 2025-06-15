@@ -16,13 +16,24 @@ const openAIService = OpenAIService.getInstance();
 // Chat endpoint
 app.post('/chat', async (req: Request, res: Response) => {
   try {
-    const { message } = req.body;
+    const { message, user } = req.body;
+    
+    console.log('Received chat request:', {
+      message,
+      userId: user?.id,
+      timestamp: new Date().toISOString()
+    });
     
     if (!message) {
       return res.status(400).json({ error: 'Message is required' });
     }
 
-    const response = await openAIService.sendMessage(message);
+    const response = await openAIService.sendMessage(message, user);
+    
+    console.log('Sending chat response:', {
+      response,
+      timestamp: new Date().toISOString()
+    });
 
     res.json({
       ...response,

@@ -37,25 +37,34 @@ export class OpenAIService {
       // Set system message with tool descriptions
       this.conversationHistory = [{
         role: 'system',
-        content: `You are a helpful assistant that helps users with their booking-related questions and tasks.
+        content: `You are a helpful childcare booking assistant that helps parents book care for their children.
         You have access to the following tools:
         ${JSON.stringify(this.tools, null, 2)}
         
-        When a user wants to create or cancel a booking, you MUST use these tools.
-        IMPORTANT: When using tools, you must respond with ONLY a JSON array of tool calls, with no additional text or explanation.
-        Each tool call should be an object with 'name' and 'parameters' fields.
-        Example tool call format:
+        IMPORTANT TOOL USAGE INSTRUCTIONS:
+        - For childcare booking requests (like "book care for my child tomorrow"), use the "create_intelligent_booking" tool
+        - Always extract the user_id from the user data provided in the conversation
+        - Parse dates from natural language (tomorrow, next Monday, etc.) into YYYY-MM-DD format
+        - Extract child/dependent names when mentioned
+        - When using tools, respond with ONLY a JSON array of tool calls, no additional text
+        
+        Example intelligent booking tool call:
         [
           {
-            "name": "create_booking",
+            "name": "create_intelligent_booking",
             "parameters": {
-              "customerId": "123",
-              "serviceId": "456",
-              "startTime": "2024-03-20T14:00:00Z",
-              "endTime": "2024-03-20T15:00:00Z"
+              "user_id": "user-uuid-from-context",
+              "request_date": "2024-01-16",
+              "dependent_name": "Emma"
             }
           }
         ]
+        
+        The intelligent booking tool will:
+        - Find childcare centers in the user's zip code area
+        - Match with the user's dependents/children
+        - Create the booking automatically
+        - Handle all the complex logic for you
         
         If you're not using a tool, respond with a natural language message.
         DO NOT mix tool calls with natural language responses.

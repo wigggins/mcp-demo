@@ -32,8 +32,30 @@ interface ToolCall {
 // Available tools
 const tools: Tool[] = [
   {
+    name: 'create_intelligent_booking',
+    description: 'Creates a childcare booking intelligently based on user request. Automatically finds suitable childcare centers in the user\'s area and matches with their dependents.',
+    parameters: {
+      type: 'object',
+      properties: {
+        user_id: {
+          type: 'string',
+          description: 'The ID of the user making the booking request'
+        },
+        request_date: {
+          type: 'string',
+          description: 'The requested date for childcare (optional, defaults to tomorrow if not specified). Format: YYYY-MM-DD'
+        },
+        dependent_name: {
+          type: 'string',
+          description: 'The name of the child/dependent (optional, will use first dependent if not specified)'
+        }
+      },
+      required: ['user_id']
+    }
+  },
+  {
     name: 'create_booking',
-    description: 'Creates a new booking with the specified details',
+    description: 'Creates a new booking with the specified details (legacy format)',
     parameters: {
       type: 'object',
       properties: {
@@ -75,6 +97,41 @@ const tools: Tool[] = [
 
 // Tool implementations
 const toolImplementations: Record<string, (params: any) => Promise<any>> = {
+  create_intelligent_booking: async (params: { 
+    user_id: string;
+    request_date?: string;
+    dependent_name?: string;
+  }) => {
+    try {
+      console.log('Creating intelligent booking with params:', params);
+      
+      const bookingPayload: any = {
+        user_id: params.user_id
+      };
+      
+      if (params.request_date) {
+        bookingPayload.request_date = params.request_date;
+      }
+      
+      if (params.dependent_name) {
+        bookingPayload.dependent_name = params.dependent_name;
+      }
+      
+      const response = await axios.post(
+        'http://localhost:3001/bookings/intelligent',
+        bookingPayload
+      );
+      
+      console.log('Intelligent booking created successfully:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error creating intelligent booking:', error);
+      if (axios.isAxiosError(error) && error.response) {
+        throw new Error(error.response.data.error || 'Failed to create intelligent booking');
+      }
+      throw new Error('Failed to create intelligent booking');
+    }
+  },
   create_booking: async (params: { 
     customerId: string;
     serviceId: string;

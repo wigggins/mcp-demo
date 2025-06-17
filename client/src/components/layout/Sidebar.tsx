@@ -26,6 +26,14 @@ const Sidebar = () => {
           </li>
           <li>
             <Link
+              to="/dashboard/children"
+              className="flex items-center px-4 py-2 hover:bg-gray-700"
+            >
+              <span className="ml-2">Children</span>
+            </Link>
+          </li>
+          <li>
+            <Link
               to="/dashboard/settings"
               className="flex items-center px-4 py-2 hover:bg-gray-700"
             >

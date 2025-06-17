@@ -18,6 +18,47 @@ app.use(express.json());
 type BookingStatus = 'DRAFT' | 'PENDING' | 'PARTIAL' | 'CONFIRMED' | 'CANCELLED';
 type BookingDayStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED';
 
+// Login endpoint
+app.post('/auth/login', async (req: Request, res: Response) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ 
+        error: 'Missing required fields: email and password are required' 
+      });
+    }
+
+    // Find user by email
+    const result = await query(
+      'SELECT id, name, email, hashed_pass, zip_code, created_at FROM users WHERE email = $1',
+      [email]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    const user = result.rows[0];
+
+    // Verify password
+    const isValidPassword = await bcrypt.compare(password, user.hashed_pass);
+    if (!isValidPassword) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    // Return user data (excluding password hash)
+    const { hashed_pass, ...userWithoutPassword } = user;
+    res.json({ 
+      user: userWithoutPassword,
+      message: 'Login successful' 
+    });
+  } catch (error: any) {
+    console.error('Error during login:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Create user endpoint
 app.post('/users', async (req: Request, res: Response) => {
   try {
@@ -87,6 +128,55 @@ app.get('/users/:userId/dependents', async (req: Request, res: Response) => {
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching dependents:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Update dependent endpoint
+app.put('/dependents/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { name, birth_date } = req.body;
+
+    if (!name) {
+      return res.status(400).json({ 
+        error: 'Missing required field: name is required' 
+      });
+    }
+
+    const result = await query(
+      'UPDATE dependents SET name = $1, birth_date = $2, updated_at = now() WHERE id = $3 RETURNING *',
+      [name, birth_date || null, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Dependent not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error: any) {
+    console.error('Error updating dependent:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Delete dependent endpoint
+app.delete('/dependents/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const result = await query(
+      'DELETE FROM dependents WHERE id = $1 RETURNING *',
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Dependent not found' });
+    }
+
+    res.json({ message: 'Dependent deleted successfully', dependent: result.rows[0] });
+  } catch (error: any) {
+    console.error('Error deleting dependent:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

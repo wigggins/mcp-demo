@@ -2,10 +2,15 @@ import { Pool, PoolClient } from 'pg';
 
 // Create a connection pool
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  user: 'booking_user',
+  password: 'booking_password',
+  host: 'localhost',
+  port: 5432,
+  database: 'mcp_booking_db',
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,
+  ssl: false,  // Disable SSL for local Docker container
 });
 
 // Database query helper

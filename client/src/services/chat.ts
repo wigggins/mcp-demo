@@ -14,12 +14,16 @@ export class ChatService {
 
   public async sendMessage(message: string): Promise<string> {
     try {
+      // Get user data from localStorage
+      const userStr = localStorage.getItem('user');
+      const user = userStr ? JSON.parse(userStr) : null;
+      
       const response = await fetch(`${API_URL}/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({ message, user }),
       });
 
       if (!response.ok) {

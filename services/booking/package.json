@@ -6,7 +6,9 @@
   "scripts": {
     "start": "ts-node index.ts",
     "dev": "nodemon index.ts",
-    "db:init": "psql -h localhost -U booking_user -d mcp_booking_db -f schema.sql"
+    "db:init": "docker exec -i mcp-booking-postgres psql -U booking_user -d mcp_booking_db < schema.sql",
+    "db:sample": "docker exec -i mcp-booking-postgres psql -U booking_user -d mcp_booking_db < sample-data.sql",
+    "db:setup": "npm run db:init && npm run db:sample"
   },
   "dependencies": {
     "express": "^4.18.2",

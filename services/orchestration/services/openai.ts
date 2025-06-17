@@ -46,19 +46,19 @@ export class OpenAIService {
         - Always extract the user_id from the user data provided in the conversation
         - Parse dates from natural language (tomorrow, next Monday, etc.) into YYYY-MM-DD format
         - Extract child/dependent names when mentioned
-        - When using tools, respond with ONLY a JSON array of tool calls, no additional text
         
-        Example intelligent booking tool call:
-        [
-          {
-            "name": "create_intelligent_booking",
-            "parameters": {
-              "user_id": "user-uuid-from-context",
-              "request_date": "2024-01-16",
-              "dependent_name": "Emma"
-            }
+        RESPONSE FORMAT:
+        - When using tools, respond with ONLY a JSON object (not an array) in this exact format:
+        {
+          "name": "create_intelligent_booking",
+          "parameters": {
+            "user_id": "user-uuid-from-context",
+            "request_date": "2024-01-16",
+            "dependent_name": "Emma"
           }
-        ]
+        }
+        
+        - For general conversation (greetings, questions, clarifications), respond with natural language
         
         The intelligent booking tool will:
         - Find childcare centers in the user's zip code area
@@ -66,7 +66,6 @@ export class OpenAIService {
         - Create the booking automatically
         - Handle all the complex logic for you
         
-        If you're not using a tool, respond with a natural language message.
         DO NOT mix tool calls with natural language responses.
         DO NOT include any explanatory text when making tool calls.
         DO NOT use markdown formatting or code blocks when making tool calls.`
@@ -113,7 +112,7 @@ export class OpenAIService {
         messages: this.conversationHistory,
         temperature: config.openai.temperature,
         max_tokens: config.openai.maxTokens,
-        response_format: { type: "json_object" }
+        // Remove forced JSON format to allow natural language responses
       });
 
       const responseText = response.choices[0]?.message?.content || 'Sorry, I could not process your request.';
@@ -128,21 +127,27 @@ export class OpenAIService {
       // Try to parse tool calls from the response
       let toolCalls: any = null;
       try {
-        toolCalls = JSON.parse(responseText);
-        // Accept both array and single object
-        if (!Array.isArray(toolCalls)) {
-          toolCalls = [toolCalls];
+        // First, check if the response looks like JSON
+        if (responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
+          const parsed = JSON.parse(responseText);
+          // Accept both array and single object
+          if (Array.isArray(parsed)) {
+            toolCalls = parsed;
+          } else if (parsed.name && parsed.parameters) {
+            toolCalls = [parsed];
+          }
         }
-      } catch (error) {
-        toolCalls = null;
-      }
+              } catch (error: any) {
+          console.log('Response is not JSON, treating as natural language:', error.message);
+          toolCalls = null;
+        }
 
       if (toolCalls && Array.isArray(toolCalls) && toolCalls.length > 0 && toolCalls[0].name && toolCalls[0].parameters) {
         console.log('Detected tool calls:', JSON.stringify(toolCalls, null, 2));
         // Execute the tools
         console.log('Sending tool calls to MCP server...');
         const toolResponse = await axios.post(`${config.mcp.url}/execute`, {
-          toolCalls
+          toolCalls: toolCalls  // toolCalls is already an array from our parsing logic above
         });
         console.log('Received tool execution results:', JSON.stringify(toolResponse.data, null, 2));
 
@@ -172,9 +177,14 @@ export class OpenAIService {
 
       // If not a tool call, just return the LLM's response
       return { message: responseText };
-    } catch (error) {
-      console.error('Error in OpenAI service:', error);
-      throw new Error('Failed to get response from OpenAI');
+    } catch (error: any) {
+      console.error('Error in OpenAI service:', {
+        error: error.message,
+        stack: error.stack,
+        response: error.response?.data,
+        status: error.response?.status
+      });
+      throw new Error(`Failed to get response from OpenAI: ${error.message}`);
     }
   }
 

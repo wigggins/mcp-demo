@@ -263,10 +263,117 @@ app.get('/centers', async (req: Request, res: Response) => {
   }
 });
 
-// Intelligent booking endpoint (for orchestration layer)
+// Helper function to get center availability for given dates
+async function getCenterAvailability(client: any, centerIds: string[], dates: string[]) {
+  const availability: Record<string, Record<string, boolean>> = {};
+  
+  for (const centerId of centerIds) {
+    availability[centerId] = {};
+    
+    for (const dateStr of dates) {
+      const date = new Date(dateStr);
+      const weekday = date.getDay() === 0 ? 7 : date.getDay(); // Convert Sunday(0) to 7
+      
+      // Check if center operates on this weekday
+      const operatingResult = await client.query(
+        'SELECT 1 FROM center_operating_days WHERE center_id = $1 AND weekday = $2',
+        [centerId, weekday]
+      );
+      
+      let isAvailable = operatingResult.rows.length > 0;
+      
+      // Check for schedule exceptions (closures or capacity overrides)
+      if (isAvailable) {
+        const exceptionResult = await client.query(
+          'SELECT is_closed, capacity_override FROM center_schedule_exceptions WHERE center_id = $1 AND date = $2',
+          [centerId, dateStr]
+        );
+        
+        if (exceptionResult.rows.length > 0) {
+          const exception = exceptionResult.rows[0];
+          if (exception.is_closed) {
+            isAvailable = false;
+          }
+          // Note: We could also check capacity_override vs current bookings here
+        }
+      }
+      
+      availability[centerId][dateStr] = isAvailable;
+    }
+  }
+  
+  return availability;
+}
+
+// Helper function to find optimal center assignment for multiple dates
+function optimizeCenterAssignment(availability: Record<string, Record<string, boolean>>, dates: string[], preferredCenterId?: string) {
+  const assignments: Record<string, string> = {};
+  const unassigned: string[] = [];
+  
+  // If a preferred center is specified and can handle all dates, use it
+  if (preferredCenterId && availability[preferredCenterId]) {
+    const canHandleAll = dates.every(date => availability[preferredCenterId!][date]);
+    if (canHandleAll) {
+      dates.forEach(date => {
+        assignments[date] = preferredCenterId!;
+      });
+      return { assignments, unassigned: [] };
+    }
+  }
+  
+  // Try to minimize the number of different centers used
+  const centerIds = Object.keys(availability);
+  
+  // First, try to find a single center that can handle all dates
+  for (const centerId of centerIds) {
+    const canHandleAll = dates.every(date => availability[centerId][date]);
+    if (canHandleAll) {
+      dates.forEach(date => {
+        assignments[date] = centerId;
+      });
+      return { assignments, unassigned: [] };
+    }
+  }
+  
+  // If no single center can handle all dates, use greedy assignment
+  // Prefer centers that can handle more dates
+  const remainingDates = [...dates];
+  
+  while (remainingDates.length > 0) {
+    let bestCenter = null;
+    let bestCount = 0;
+    
+    // Find center that can handle the most remaining dates
+    for (const centerId of centerIds) {
+      const canHandle = remainingDates.filter(date => availability[centerId][date]);
+      if (canHandle.length > bestCount) {
+        bestCenter = centerId;
+        bestCount = canHandle.length;
+      }
+    }
+    
+    if (!bestCenter || bestCount === 0) {
+      // No center can handle remaining dates
+      unassigned.push(...remainingDates);
+      break;
+    }
+    
+    // Assign dates to the best center
+    const assignedDates = remainingDates.filter(date => availability[bestCenter!][date]);
+    assignedDates.forEach(date => {
+      assignments[date] = bestCenter!;
+      const index = remainingDates.indexOf(date);
+      remainingDates.splice(index, 1);
+    });
+  }
+  
+  return { assignments, unassigned };
+}
+
+// Intelligent booking endpoint (for orchestration layer) - Enhanced for multi-day bookings
 app.post('/bookings/intelligent', async (req: Request, res: Response) => {
   try {
-    const { user_id, request_date, dependent_name, center_name } = req.body;
+    const { user_id, request_date, request_dates, dependent_name, center_name } = req.body;
 
     if (!user_id) {
       return res.status(400).json({ 
@@ -314,21 +421,49 @@ app.post('/bookings/intelligent', async (req: Request, res: Response) => {
       // Use first matching dependent
       const dependent = dependentResult.rows[0];
 
+      // Parse dates - support both single date and multiple dates
+      let requestDates: string[] = [];
+      
+      if (request_dates && Array.isArray(request_dates)) {
+        // Multiple dates provided
+        requestDates = request_dates;
+      } else if (request_date) {
+        // Single date provided
+        requestDates = [request_date];
+      } else {
+        // Default to tomorrow
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        requestDates = [tomorrow.toISOString().split('T')[0]];
+      }
+
+      // Validate and sort dates
+      requestDates = requestDates
+        .map(dateStr => {
+          const date = new Date(dateStr);
+          if (isNaN(date.getTime())) {
+            throw new Error(`Invalid date: ${dateStr}`);
+          }
+          return date.toISOString().split('T')[0];
+        })
+        .sort();
+
       // Find centers in user's zip code
-      let centerQuery = 'SELECT * FROM centers WHERE zip_code = $1';
+      let centerQuery = `
+        SELECT c.*, 
+               array_agg(cod.weekday ORDER BY cod.weekday) as operating_days
+        FROM centers c
+        LEFT JOIN center_operating_days cod ON c.id = cod.center_id
+        WHERE c.zip_code = $1
+      `;
       const centerParams = [user.zip_code];
       
       if (center_name) {
-        // If a specific center is requested, try to find it by name
-        centerQuery += ' AND LOWER(name) LIKE LOWER($2)';
+        centerQuery += ' AND LOWER(c.name) LIKE LOWER($2)';
         centerParams.push(`%${center_name}%`);
       }
       
-      centerQuery += ' ORDER BY name';
-      
-      if (!center_name) {
-        centerQuery += ' LIMIT 1'; // Only limit if no specific center requested
-      }
+      centerQuery += ' GROUP BY c.id ORDER BY c.name';
 
       const centerResult = await client.query(centerQuery, centerParams);
 
@@ -344,16 +479,33 @@ app.post('/bookings/intelligent', async (req: Request, res: Response) => {
         }
       }
 
-      // Use the first matching center (or only center if name was specified)
-      const center = centerResult.rows[0];
+      const availableCenters = centerResult.rows;
+      const centerIds = availableCenters.map(c => c.id);
 
-      // Parse date (default to tomorrow if not provided)
-      let bookingDate;
-      if (request_date) {
-        bookingDate = new Date(request_date);
-      } else {
-        bookingDate = new Date();
-        bookingDate.setDate(bookingDate.getDate() + 1); // Tomorrow
+      // Get availability for all centers and dates
+      const availability = await getCenterAvailability(client, centerIds, requestDates);
+      
+      // Find preferred center ID if center name was specified
+      const preferredCenter = center_name ? 
+        availableCenters.find(c => c.name.toLowerCase().includes(center_name.toLowerCase())) : 
+        null;
+
+      // Optimize center assignments
+      const { assignments, unassigned } = optimizeCenterAssignment(
+        availability, 
+        requestDates, 
+        preferredCenter?.id
+      );
+
+      if (unassigned.length > 0) {
+        return res.status(400).json({
+          error: `No available centers found for the following dates: ${unassigned.join(', ')}. Please check center schedules and try different dates.`,
+          unavailable_dates: unassigned,
+          available_centers: availableCenters.map(c => ({
+            name: c.name,
+            operating_days: c.operating_days
+          }))
+        });
       }
 
       // Create booking
@@ -364,13 +516,33 @@ app.post('/bookings/intelligent', async (req: Request, res: Response) => {
 
       const booking = bookingResult.rows[0];
 
-      // Create booking day
-      const dayResult = await client.query(
-        'INSERT INTO booking_days (booking_id, date, center_id, status) VALUES ($1, $2, $3, $4) RETURNING *',
-        [booking.id, bookingDate.toISOString().split('T')[0], center.id, 'PENDING']
-      );
+      // Create booking days for each assigned date
+      const bookingDays = [];
+      const centerAssignments = Object.entries(assignments);
+      
+      for (const [dateStr, centerId] of centerAssignments) {
+        const dayResult = await client.query(
+          'INSERT INTO booking_days (booking_id, date, center_id, status) VALUES ($1, $2, $3, $4) RETURNING *',
+          [booking.id, dateStr, centerId, 'PENDING']
+        );
+        
+        const center = availableCenters.find(c => c.id === centerId);
+        bookingDays.push({
+          ...dayResult.rows[0],
+          center_name: center?.name || 'Unknown Center'
+        });
+      }
 
       await client.query('COMMIT');
+
+      // Calculate assignment summary
+      const centerUsage = new Map<string, number>();
+      centerAssignments.forEach(([_, centerId]) => {
+        const center = availableCenters.find(c => c.id === centerId);
+        if (center) {
+          centerUsage.set(center.name, (centerUsage.get(center.name) || 0) + 1);
+        }
+      });
 
       // Return comprehensive booking details
       const fullBooking = {
@@ -380,12 +552,23 @@ app.post('/bookings/intelligent', async (req: Request, res: Response) => {
         user_zip_code: user.zip_code,
         dependent_name: dependent.name,
         dependent_birth_date: dependent.birth_date,
-        center_name: center.name,
-        center_zip_code: center.zip_code,
-        booking_days: [dayResult.rows[0]]
+        booking_days: bookingDays,
+        assignment_summary: {
+          total_days: requestDates.length,
+          centers_used: centerUsage.size,
+          center_breakdown: Object.fromEntries(centerUsage)
+        }
       };
 
-      console.log('Intelligent booking created:', fullBooking);
+      console.log('Multi-day intelligent booking created:', {
+        bookingId: booking.id,
+        dates: requestDates,
+        assignments: Object.fromEntries(centerAssignments.map(([date, centerId]) => {
+          const center = availableCenters.find(c => c.id === centerId);
+          return [date, center?.name || centerId];
+        }))
+      });
+      
       res.status(201).json(fullBooking);
     } catch (error) {
       await client.query('ROLLBACK');
@@ -395,6 +578,9 @@ app.post('/bookings/intelligent', async (req: Request, res: Response) => {
     }
   } catch (error: any) {
     console.error('Error creating intelligent booking:', error);
+    if (error.message.includes('Invalid date')) {
+      return res.status(400).json({ error: error.message });
+    }
     res.status(500).json({ error: 'Internal server error' });
   }
 });

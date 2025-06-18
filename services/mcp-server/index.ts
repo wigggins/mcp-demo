@@ -77,6 +77,13 @@ const tools: Tool[] = [
           type: 'string',
           description: 'The requested date for childcare (optional, defaults to tomorrow if not specified). Format: YYYY-MM-DD'
         },
+        request_dates: {
+          type: 'array',
+          items: {
+            type: 'string'
+          },
+          description: 'Multiple requested dates for childcare (optional, use this for multi-day bookings). Format: ["YYYY-MM-DD", "YYYY-MM-DD"]'
+        },
         dependent_name: {
           type: 'string',
           description: 'The name of the child/dependent (optional, will use first dependent if not specified)'
@@ -191,6 +198,7 @@ const toolImplementations: Record<string, (params: any) => Promise<any>> = {
   create_intelligent_booking: async (params: { 
     user_id: string;
     request_date?: string;
+    request_dates?: string[];
     dependent_name?: string;
     center_name?: string;
   }) => {
@@ -203,6 +211,10 @@ const toolImplementations: Record<string, (params: any) => Promise<any>> = {
       
       if (params.request_date) {
         bookingPayload.request_date = params.request_date;
+      }
+      
+      if (params.request_dates) {
+        bookingPayload.request_dates = params.request_dates;
       }
       
       if (params.dependent_name) {
@@ -223,7 +235,12 @@ const toolImplementations: Record<string, (params: any) => Promise<any>> = {
     } catch (error) {
       console.error('Error creating intelligent booking:', error);
       if (axios.isAxiosError(error) && error.response) {
-        throw new Error(error.response.data.error || 'Failed to create intelligent booking');
+        // Return the full error response for better error handling
+        return {
+          error: error.response.data.error || 'Failed to create intelligent booking',
+          unavailable_dates: error.response.data.unavailable_dates,
+          available_centers: error.response.data.available_centers
+        };
       }
       throw new Error('Failed to create intelligent booking');
     }

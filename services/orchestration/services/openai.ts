@@ -33,6 +33,29 @@ export class OpenAIService {
       const response = await axios.get(`${config.mcp.url}/tools`);
       this.tools = response.data;
       console.log('Available tools:', JSON.stringify(this.tools, null, 2));
+      
+      // Calculate example dates for the prompt
+      const today = new Date();
+      const tomorrow = new Date(today);
+      tomorrow.setDate(today.getDate() + 1);
+      
+      // Find next Wednesday
+      const nextWednesday = new Date(today);
+      const daysUntilWednesday = (3 - today.getDay() + 7) % 7 || 7; // 3 = Wednesday
+      nextWednesday.setDate(today.getDate() + daysUntilWednesday);
+      
+      // Find next Thursday, Friday, Saturday
+      const nextThursday = new Date(today);
+      const daysUntilThursday = (4 - today.getDay() + 7) % 7 || 7;
+      nextThursday.setDate(today.getDate() + daysUntilThursday);
+      
+      const nextFriday = new Date(nextThursday);
+      nextFriday.setDate(nextThursday.getDate() + 1);
+      
+      const nextSaturday = new Date(nextThursday);
+      nextSaturday.setDate(nextThursday.getDate() + 2);
+      
+      const formatDate = (date: Date) => date.toISOString().split('T')[0];
 
       // Set system message with tool descriptions
       this.conversationHistory = [{
@@ -51,7 +74,17 @@ export class OpenAIService {
         FOR BOOKING REQUESTS:
         - For childcare booking requests (like "book care for my child tomorrow" or "book care at Sunshine Center"), use the "create_intelligent_booking" tool
         - ALWAYS extract the user_id from the "User data" provided in the conversation - this is the ID of the parent making the request
-        - Parse dates from natural language (tomorrow, next Monday, etc.) into YYYY-MM-DD format
+        - Parse dates from natural language relative to TODAY'S DATE into YYYY-MM-DD format
+        - TODAY'S DATE for reference: ${formatDate(today)}
+        - For SINGLE day requests: use "request_date" parameter
+        - FOR MULTI-DAY requests (like "Thursday, Friday and Saturday" or "this week"): use "request_dates" array parameter
+        
+        DATE PARSING RULES (calculate from today: ${formatDate(today)}):
+        - "tomorrow" = ${formatDate(tomorrow)}
+        - "next Wednesday" = ${formatDate(nextWednesday)}
+        - "this Thursday" = ${formatDate(nextThursday)}
+        - "Thursday, Friday, Saturday" = ${formatDate(nextThursday)}, ${formatDate(nextFriday)}, ${formatDate(nextSaturday)}
+        - Always calculate dates relative to the current date, never use hardcoded past dates like 2024-01-XX
         - For dependent_name: ONLY include this if the user specifically mentions a child's name (like "book care for Emma" or "my daughter Sarah")
         - If the user says generic terms like "my child", "my kid", "my daughter" WITHOUT a specific name, do NOT include dependent_name - the system will automatically use their first child
         - For center_name: Extract if the user mentions a specific center name (like "book at Little Angels Preschool", "Sunshine Center", "Happy Kids Daycare")
@@ -74,34 +107,49 @@ export class OpenAIService {
           }
         }
         
-        For booking with specific child name:
+        For booking with specific child name (calculate actual future date):
         {
           "name": "create_intelligent_booking",
           "parameters": {
             "user_id": "user-uuid-from-context",
-            "request_date": "2024-01-16",
+            "request_date": "YYYY-MM-DD",
             "dependent_name": "Emma"
           }
         }
         
-        For booking without specific child name (generic "my child"):
+        For booking without specific child name (calculate actual future date):
         {
           "name": "create_intelligent_booking",
           "parameters": {
             "user_id": "user-uuid-from-context",
-            "request_date": "2024-01-16"
+            "request_date": "YYYY-MM-DD"
           }
         }
         
-        For booking at a specific center:
+        For booking at a specific center (calculate actual future date):
         {
           "name": "create_intelligent_booking",
           "parameters": {
             "user_id": "user-uuid-from-context",
-            "request_date": "2024-01-16",
+            "request_date": "YYYY-MM-DD",
             "center_name": "Little Angels Preschool"
           }
         }
+        
+        For multi-day booking (calculate actual future dates):
+        {
+          "name": "create_intelligent_booking",
+          "parameters": {
+            "user_id": "user-uuid-from-context",
+            "request_dates": ["YYYY-MM-DD", "YYYY-MM-DD", "YYYY-MM-DD"]
+          }
+        }
+        
+        IMPORTANT: Always calculate real future dates relative to today (${formatDate(today)}), never use example dates from the past!
+        
+        EXAMPLE with real current dates:
+        - For "next Wednesday": use "${formatDate(nextWednesday)}"
+        - For "Thursday, Friday, Saturday": use ["${formatDate(nextThursday)}", "${formatDate(nextFriday)}", "${formatDate(nextSaturday)}"]
         
         For getting user's children when unclear:
         {
@@ -201,10 +249,35 @@ export class OpenAIService {
         console.log('Detected tool calls:', JSON.stringify(toolCalls, null, 2));
         // Execute the tools
         console.log('Sending tool calls to MCP server...');
-        const toolResponse = await axios.post(`${config.mcp.url}/execute`, {
-          toolCalls: toolCalls  // toolCalls is already an array from our parsing logic above
-        });
-        console.log('Received tool execution results:', JSON.stringify(toolResponse.data, null, 2));
+        let toolResponse;
+        try {
+          toolResponse = await axios.post(`${config.mcp.url}/execute`, {
+            toolCalls: toolCalls  // toolCalls is already an array from our parsing logic above
+          });
+          console.log('Received tool execution results:', JSON.stringify(toolResponse.data, null, 2));
+        } catch (mcpError: any) {
+          console.error('MCP server error:', mcpError.response?.data || mcpError.message);
+          
+          // Handle MCP server errors gracefully
+          const errorMessage = mcpError.response?.data?.error || mcpError.message || 'Unknown error';
+          
+          let userFriendlyError = "I'm having trouble processing your request right now. ";
+          
+          if (errorMessage.includes('No available centers found')) {
+            userFriendlyError = "I couldn't find any available childcare centers for your requested dates. This might be because the centers are closed on those days or fully booked. Would you like to try different dates?";
+          } else if (errorMessage.includes('No dependent found')) {
+            userFriendlyError = "I'm having trouble finding your child's information. Could you please specify which child you'd like to book care for?";
+          } else if (errorMessage.includes('No childcare center found')) {
+            userFriendlyError = "I couldn't find the childcare center you mentioned. Let me show you the available centers in your area.";
+          } else {
+            userFriendlyError += `${errorMessage}. Please try again or contact support if this issue persists.`;
+          }
+          
+          return {
+            message: userFriendlyError,
+            toolResults: []
+          };
+        }
 
         // Add tool results to conversation history
         this.conversationHistory.push({
@@ -231,7 +304,49 @@ export class OpenAIService {
           // Check for booking errors that need special handling
           const result = toolResponse.data.results[0];
           if (toolCalls[0].name === 'create_intelligent_booking' && result && result.error) {
-            if (result.error.includes('No dependent found')) {
+            console.log('Handling booking error:', result.error);
+            
+            if (result.error.includes('No available centers found')) {
+              // Handle center availability errors
+              try {
+                // Extract unavailable dates if provided
+                const unavailableDates = result.unavailable_dates || [];
+                const availableCenters = result.available_centers || [];
+                
+                let errorMessage = "I'm sorry, but I couldn't find available childcare centers for your requested dates. ";
+                
+                if (unavailableDates.length > 0) {
+                  const dateStrings = unavailableDates.map((date: string) => {
+                    const d = new Date(date);
+                    return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+                  });
+                  
+                  if (unavailableDates.length === 1) {
+                    errorMessage += `Specifically, no centers are available on ${dateStrings[0]}. `;
+                  } else {
+                    errorMessage += `Specifically, no centers are available on ${dateStrings.join(', ')}. `;
+                  }
+                }
+                
+                if (availableCenters.length > 0) {
+                  errorMessage += "Here are the centers in your area and their operating schedules:\n\n";
+                  availableCenters.forEach((center: any) => {
+                    const days = center.operating_days || [];
+                    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                    const operatingDays = days.map((d: number) => dayNames[d === 7 ? 0 : d]).join(', ');
+                    errorMessage += `• **${center.name}**: ${operatingDays}\n`;
+                  });
+                  errorMessage += "\nWould you like to try different dates, or would you prefer to book at a specific center for the days they're available?";
+                } else {
+                  errorMessage += "You might want to try a different area or check back later.";
+                }
+                
+                finalText = errorMessage;
+              } catch (error) {
+                console.error('Error handling center availability error:', error);
+                finalText = "I'm sorry, but I couldn't find available childcare centers for your requested dates. Please try different dates or contact the centers directly.";
+              }
+            } else if (result.error.includes('No dependent found')) {
               // If booking failed due to no dependent found, try to get dependents and ask for clarification
               try {
                 const userMatch = this.conversationHistory.find(msg => 
@@ -288,15 +403,54 @@ export class OpenAIService {
                 console.error('Error handling booking failure:', error);
                 finalText = "I had trouble with that booking request. Could you please specify which child you'd like to book care for?";
               }
+            } else if (result.error.includes('No childcare center found matching')) {
+              // Handle specific center not found errors
+              const centerNameMatch = result.error.match(/No childcare center found matching "([^"]+)"/);
+              const centerName = centerNameMatch ? centerNameMatch[1] : 'the requested center';
+              finalText = `I couldn't find a childcare center named "${centerName}" in your area. Let me show you the available centers so you can choose one that works for you.`;
+              
+              // Try to get available centers
+              try {
+                const userMatch = this.conversationHistory.find(msg => 
+                  msg.content.includes('User data:') && msg.role === 'system'
+                );
+                if (userMatch) {
+                  const userData = JSON.parse(userMatch.content.replace('User data: ', ''));
+                  const centersCall = [{
+                    name: 'get_care_centers',
+                    parameters: { user_id: userData.id, zip_code: userData.zip_code }
+                  }];
+                  
+                  const centersResponse = await axios.post(`${config.mcp.url}/execute`, {
+                    toolCalls: centersCall
+                  });
+                  
+                  if (centersResponse.data.results[0]) {
+                    return {
+                      message: finalText,
+                      toolResults: centersResponse.data.results
+                    };
+                  }
+                }
+              } catch (error) {
+                console.error('Error fetching centers after center not found:', error);
+              }
             } else {
-              // For other booking errors, ask LLM for a response
-              const finalResponse = await openai.chat.completions.create({
-                model: config.openai.model,
-                messages: this.conversationHistory,
-                temperature: config.openai.temperature,
-                max_tokens: config.openai.maxTokens,
-              });
-              finalText = finalResponse.choices[0]?.message?.content || 'Sorry, I could not process your booking request.';
+              // For other booking errors, provide a helpful response
+              let helpfulError = "I encountered an issue with your booking request. ";
+              
+              if (result.error.includes('User not found')) {
+                helpfulError = "I'm having trouble finding your account information. Please make sure you're logged in properly.";
+              } else if (result.error.includes('Invalid date')) {
+                helpfulError = "There seems to be an issue with the date you specified. Could you please try again with a different date format?";
+              } else if (result.error.includes('zip code')) {
+                helpfulError = "I'm having trouble finding childcare centers in your area. You might want to check if your zip code is correct in your profile.";
+              } else {
+                // Generic helpful error with the actual error for context
+                helpfulError += `The system returned: "${result.error}". Please try rephrasing your request or contact support if this continues.`;
+              }
+              
+              finalText = helpfulError;
             }
           } else {
             // For other tools, ask LLM for a final response

@@ -8,10 +8,61 @@ import {
   TrendingDown, 
   Plus,
   ArrowRight,
-  Activity
+  Activity,
+  Loader2,
+  AlertCircle
 } from 'lucide-react'
+import { useBookings, useCenters, useHealthCheck } from '../hooks/useApi'
+import { useMemo } from 'react'
 
 const Dashboard = () => {
+  const { data: bookings, loading: bookingsLoading } = useBookings()
+  const { data: centers, loading: centersLoading } = useCenters()
+  const { data: health, loading: healthLoading } = useHealthCheck()
+
+  // Calculate statistics from real data
+  const stats = useMemo(() => {
+    const totalBookings = bookings.length
+    const pendingBookings = bookings.filter(b => b.status === 'PENDING').length
+    const confirmedBookings = bookings.filter(b => b.status === 'CONFIRMED').length
+    const totalCenters = centers.length
+    const totalCapacity = centers.reduce((sum, center) => sum + center.daily_capacity, 0)
+    
+    // Simulate some occupancy data
+    const simulatedOccupancy = Math.floor(totalCapacity * 0.75)
+    const capacityUsed = totalCapacity > 0 ? Math.round((simulatedOccupancy / totalCapacity) * 100) : 0
+
+    return {
+      totalBookings,
+      pendingBookings,
+      confirmedBookings,
+      totalCenters,
+      capacityUsed,
+      totalCapacity,
+      simulatedOccupancy
+    }
+  }, [bookings, centers])
+
+  const isLoading = bookingsLoading || centersLoading || healthLoading
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="mb-6">
+          <h1 className="text-title-md font-bold text-gray-900 dark:text-white mb-2">
+            Dashboard
+          </h1>
+          <p className="text-gray-600 dark:text-gray-400">
+            Loading dashboard data...
+          </p>
+        </div>
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-8 h-8 animate-spin text-brand-500" />
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* Page Header */}
@@ -21,6 +72,15 @@ const Dashboard = () => {
         </h1>
         <p className="text-gray-600 dark:text-gray-400">
           Welcome to your booking management dashboard
+          {health && (
+            <span className={`ml-2 text-xs px-2 py-1 rounded-full ${
+              health.status === 'ok' 
+                ? 'bg-success-100 text-success-700 dark:bg-success-500/15 dark:text-success-400'
+                : 'bg-error-100 text-error-700 dark:bg-error-500/15 dark:text-error-400'
+            }`}>
+              {health.status === 'ok' ? 'System Online' : 'System Issues'}
+            </span>
+          )}
         </p>
       </div>
 
@@ -34,7 +94,7 @@ const Dashboard = () => {
           <div className="mt-4 flex items-end justify-between">
             <div>
               <h4 className="text-title-sm font-bold text-gray-900 dark:text-white">
-                245
+                {stats.totalBookings}
               </h4>
               <span className="text-theme-sm font-medium text-gray-500 dark:text-gray-400">
                 Total Bookings
@@ -42,7 +102,7 @@ const Dashboard = () => {
             </div>
             <span className="flex items-center gap-1 text-theme-sm font-medium text-success-600">
               <TrendingUp className="w-3 h-3" />
-              12%
+              {stats.totalBookings > 0 ? '+' : ''}New
             </span>
           </div>
         </div>
@@ -55,15 +115,15 @@ const Dashboard = () => {
           <div className="mt-4 flex items-end justify-between">
             <div>
               <h4 className="text-title-sm font-bold text-gray-900 dark:text-white">
-                18
+                {stats.totalCenters}
               </h4>
               <span className="text-theme-sm font-medium text-gray-500 dark:text-gray-400">
-                Active Care Centers
+                Care Centers
               </span>
             </div>
             <span className="flex items-center gap-1 text-theme-sm font-medium text-success-600">
-              <TrendingUp className="w-3 h-3" />
-              8%
+              <Activity className="w-3 h-3" />
+              {stats.totalCapacity} Total Capacity
             </span>
           </div>
         </div>
@@ -76,15 +136,15 @@ const Dashboard = () => {
           <div className="mt-4 flex items-end justify-between">
             <div>
               <h4 className="text-title-sm font-bold text-gray-900 dark:text-white">
-                32
+                {stats.pendingBookings}
               </h4>
               <span className="text-theme-sm font-medium text-gray-500 dark:text-gray-400">
                 Pending Bookings
               </span>
             </div>
-            <span className="flex items-center gap-1 text-theme-sm font-medium text-warning-600">
-              <TrendingDown className="w-3 h-3" />
-              2%
+            <span className="flex items-center gap-1 text-theme-sm font-medium text-brand-600">
+              <Clock className="w-3 h-3" />
+              {stats.confirmedBookings} Confirmed
             </span>
           </div>
         </div>
@@ -97,15 +157,15 @@ const Dashboard = () => {
           <div className="mt-4 flex items-end justify-between">
             <div>
               <h4 className="text-title-sm font-bold text-gray-900 dark:text-white">
-                89%
+                {stats.capacityUsed}%
               </h4>
               <span className="text-theme-sm font-medium text-gray-500 dark:text-gray-400">
                 Capacity Used
               </span>
             </div>
-            <span className="flex items-center gap-1 text-theme-sm font-medium text-error-600">
-              <TrendingDown className="w-3 h-3" />
-              5%
+            <span className="flex items-center gap-1 text-theme-sm font-medium text-gray-600">
+              <Users className="w-3 h-3" />
+              {stats.simulatedOccupancy}/{stats.totalCapacity}
             </span>
           </div>
         </div>

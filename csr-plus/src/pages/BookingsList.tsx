@@ -1,59 +1,31 @@
-import { Plus, Filter, Edit, Trash2 } from 'lucide-react'
+import { Plus, Filter, Edit, Trash2, Loader2, AlertCircle } from 'lucide-react'
+import { useBookings } from '../hooks/useApi'
+import { useState } from 'react'
 
 const BookingsList = () => {
-  // Sample booking data
-  const bookings = [
-    {
-      id: 1,
-      patientName: "John Smith",
-      careCenter: "Sunshine Care Center",
-      date: "2024-01-15",
-      time: "10:00 AM",
-      service: "Physical Therapy",
-      status: "confirmed",
-      duration: "60 min"
-    },
-    {
-      id: 2,
-      patientName: "Sarah Johnson",
-      careCenter: "Green Valley Center",
-      date: "2024-01-16",
-      time: "2:30 PM",
-      service: "Consultation",
-      status: "pending",
-      duration: "30 min"
-    },
-    {
-      id: 3,
-      patientName: "Michael Brown",
-      careCenter: "Riverside Care",
-      date: "2024-01-16",
-      time: "9:15 AM",
-      service: "Occupational Therapy",
-      status: "completed",
-      duration: "45 min"
-    },
-    {
-      id: 4,
-      patientName: "Emily Davis",
-      careCenter: "Sunrise Medical",
-      date: "2024-01-17",
-      time: "11:00 AM",
-      service: "Speech Therapy",
-      status: "cancelled",
-      duration: "30 min"
-    },
-    {
-      id: 5,
-      patientName: "David Wilson",
-      careCenter: "Harmony Health",
-      date: "2024-01-17",
-      time: "3:45 PM",
-      service: "Physical Therapy",
-      status: "confirmed",
-      duration: "60 min"
+  const [statusFilter, setStatusFilter] = useState<string>('')
+  const { data: bookingsData, loading, error, refetch } = useBookings(
+    statusFilter ? { status: statusFilter } : undefined
+  )
+
+  // Convert API data to match UI expectations
+  const bookings = bookingsData.map(booking => {
+    // Get the first booking day for display (most bookings will have one day)
+    const firstDay = booking.booking_days[0]
+    
+    return {
+      id: booking.id,
+      patientName: booking.dependent_name || 'Unknown',
+      careCenter: firstDay?.center_name || 'Unassigned',
+      date: firstDay?.date || 'TBD',
+      time: '9:00 AM', // Placeholder since we don't store time
+      service: 'Childcare',
+      status: booking.status.toLowerCase(),
+      duration: 'Full Day',
+      user_name: booking.user_name,
+      booking_days_count: booking.booking_days.length
     }
-  ]
+  })
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -61,13 +33,71 @@ const BookingsList = () => {
         return 'bg-success-50 text-success-600 dark:bg-success-500/15 dark:text-success-500'
       case 'pending':
         return 'bg-warning-50 text-warning-600 dark:bg-warning-500/15 dark:text-orange-400'
-      case 'completed':
+      case 'partial':
         return 'bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400'
+      case 'draft':
+        return 'bg-gray-50 text-gray-600 dark:bg-gray-500/15 dark:text-gray-400'
       case 'cancelled':
         return 'bg-error-50 text-error-600 dark:bg-error-500/15 dark:text-error-500'
       default:
         return 'bg-gray-50 text-gray-600 dark:bg-gray-500/15 dark:text-gray-400'
     }
+  }
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-title-md font-bold text-gray-900 dark:text-white mb-2">
+              Bookings
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400">
+              Loading bookings...
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-8 h-8 animate-spin text-brand-500" />
+        </div>
+      </div>
+    )
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-title-md font-bold text-gray-900 dark:text-white mb-2">
+              Bookings
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400">
+              Error loading bookings
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-col items-center justify-center py-12 space-y-4">
+          <AlertCircle className="w-12 h-12 text-error-500" />
+          <div className="text-center">
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+              Failed to load bookings
+            </h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">
+              {error}
+            </p>
+            <button
+              onClick={refetch}
+              className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2.5 text-theme-sm font-medium text-white shadow-theme-xs hover:bg-brand-600 dark:bg-brand-600 dark:hover:bg-brand-700"
+            >
+              Try Again
+            </button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (

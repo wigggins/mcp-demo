@@ -43,12 +43,16 @@ export class OpenAIService {
         
         IMPORTANT TOOL USAGE INSTRUCTIONS:
         - For childcare booking requests (like "book care for my child tomorrow"), use the "create_intelligent_booking" tool
-        - Always extract the user_id from the user data provided in the conversation
+        - ALWAYS extract the user_id from the "User data" provided in the conversation - this is the ID of the parent making the request
         - Parse dates from natural language (tomorrow, next Monday, etc.) into YYYY-MM-DD format
-        - Extract child/dependent names when mentioned
+        - For dependent_name: ONLY include this if the user specifically mentions a child's name (like "book care for Emma" or "my daughter Sarah")
+        - If the user says generic terms like "my child", "my kid", "my daughter" WITHOUT a specific name, do NOT include dependent_name - the system will automatically use their first child
+        - NEVER use the parent's name (from User data) as the dependent_name - that's the parent, not the child
         
         RESPONSE FORMAT:
         - When using tools, respond with ONLY a JSON object (not an array) in this exact format:
+        
+        For booking with specific child name:
         {
           "name": "create_intelligent_booking",
           "parameters": {
@@ -58,11 +62,22 @@ export class OpenAIService {
           }
         }
         
+        For booking without specific child name (generic "my child"):
+        {
+          "name": "create_intelligent_booking",
+          "parameters": {
+            "user_id": "user-uuid-from-context",
+            "request_date": "2024-01-16"
+          }
+        }
+        
         - For general conversation (greetings, questions, clarifications), respond with natural language
         
         The intelligent booking tool will:
         - Find childcare centers in the user's zip code area
-        - Match with the user's dependents/children
+        - Match with the user's dependents/children based on user_id
+        - If dependent_name is provided, find that specific child belonging to the user
+        - If dependent_name is NOT provided, use the user's first child automatically
         - Create the booking automatically
         - Handle all the complex logic for you
         

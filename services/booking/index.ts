@@ -299,6 +299,9 @@ app.post('/bookings/intelligent', async (req: Request, res: Response) => {
         dependentQuery += ' AND LOWER(name) LIKE LOWER($2)';
         dependentParams.push(`%${dependent_name}%`);
       }
+      
+      // Order by created_at to get the first registered child when no specific name is provided
+      dependentQuery += ' ORDER BY created_at ASC';
 
       const dependentResult = await client.query(dependentQuery, dependentParams);
 

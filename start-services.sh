@@ -46,18 +46,47 @@ BOOKING_PID=$!
 # Wait a moment for booking service to start
 sleep 2
 
+# Start MCP Server
+echo "Starting MCP Server on http://localhost:3002..."
+cd ../mcp-server
+npm run dev &
+MCP_PID=$!
+
+# Wait a moment for MCP server to start
+sleep 1
+
+# Start Orchestration Service
+echo "Starting Orchestration Service on http://localhost:3000..."
+cd ../orchestration
+npm run dev &
+ORCHESTRATION_PID=$!
+
+# Wait a moment for orchestration service to start
+sleep 2
+
 # Start CSR Plus Dashboard
 echo "Starting CSR Plus Dashboard on http://localhost:5173..."
 cd ../../csr-plus
 npm run dev &
 CSR_PID=$!
 
+# Start Client Application with Virtual Assistant
+echo "Starting Client App with AI Assistant on http://localhost:5174..."
+cd ../client
+npm run dev &
+CLIENT_PID=$!
+
 echo ""
-echo "✅ Services are starting up..."
+echo "✅ All services are starting up..."
 echo ""
+echo "🤖 Client App with AI Assistant: http://localhost:5174"
 echo "📊 CSR Plus Dashboard: http://localhost:5173"
+echo "🧠 Orchestration API: http://localhost:3000"
 echo "🔧 Booking API: http://localhost:3001"
+echo "⚙️  MCP Server: http://localhost:3002"
 echo "💡 Health Check: http://localhost:3001/health"
+echo ""
+echo "🎯 Try asking the AI: 'Show me care centers near me'"
 echo ""
 echo "Press Ctrl+C to stop all services"
 echo ""

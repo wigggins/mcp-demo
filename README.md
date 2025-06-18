@@ -151,6 +151,22 @@ The system includes comprehensive test data:
 - Mobile-friendly interface
 - Professional UI with Tailwind CSS
 
+### AI Virtual Assistant with Component Rendering
+✅ **Smart Care Center Discovery**
+- Natural language queries: "show me care centers near me"
+- Automatic ZIP code-based filtering
+- Interactive care center cards with booking options
+
+✅ **MCP Component Rendering**
+- LLM responds with natural language + visual components
+- Real-time data visualization in chat interface
+- Rich UI cards showing capacity, hours, and ratings
+
+✅ **Intelligent Conversations**
+- Context-aware responses based on user location
+- Seamless integration between text and visual elements
+- Professional care center presentation
+
 ### Booking Service
 ✅ **Comprehensive API**
 - Full CRUD operations for all entities
@@ -206,6 +222,37 @@ curl -X POST http://localhost:3001/bookings/intelligent \
     "request_date": "2024-01-20"
   }'
 ```
+
+## Virtual Assistant with Component Rendering
+
+The AI assistant now supports **MCP (Model Context Protocol) component rendering**, allowing it to respond with both natural language and interactive UI components.
+
+### Example Conversations:
+
+**User**: "Show me care centers near me"
+
+**AI Response**: 
+- 🤖 **Text**: "I found 4 childcare centers in 12345! Here are the available options:"
+- 📋 **Component**: Interactive cards showing each center with:
+  - Center name and location
+  - Daily capacity with color-coded indicators
+  - Operating days and hours
+  - Star ratings
+  - "Book Now" and "View Details" buttons
+
+**User**: "What centers are available in 67890?"
+
+**AI Response**:
+- 🤖 **Text**: "I found 2 childcare centers in 67890! Here are the available options:"
+- 📋 **Component**: Filtered results for that specific ZIP code
+
+### How It Works:
+
+1. **Natural Language Processing**: User asks about care centers
+2. **Context Extraction**: AI extracts ZIP code from user profile
+3. **Tool Execution**: MCP server calls booking API to fetch centers
+4. **Component Generation**: Returns structured data for UI rendering
+5. **Hybrid Response**: Natural language + interactive cards in chat
 
 ## Next Steps
 

@@ -42,6 +42,13 @@ export class OpenAIService {
         ${JSON.stringify(this.tools, null, 2)}
         
         IMPORTANT TOOL USAGE INSTRUCTIONS:
+        
+        FOR CARE CENTER REQUESTS:
+        - When users ask about "care centers near me", "childcare centers in my area", "what centers are available", etc., use the "get_care_centers" tool
+        - Extract zip_code from user data if available, or ask the user for their location if not provided
+        - Include user_id from "User data" for personalized results
+        
+        FOR BOOKING REQUESTS:
         - For childcare booking requests (like "book care for my child tomorrow"), use the "create_intelligent_booking" tool
         - ALWAYS extract the user_id from the "User data" provided in the conversation - this is the ID of the parent making the request
         - Parse dates from natural language (tomorrow, next Monday, etc.) into YYYY-MM-DD format
@@ -51,6 +58,15 @@ export class OpenAIService {
         
         RESPONSE FORMAT:
         - When using tools, respond with ONLY a JSON object (not an array) in this exact format:
+        
+        For care center requests:
+        {
+          "name": "get_care_centers",
+          "parameters": {
+            "user_id": "user-uuid-from-context",
+            "zip_code": "12345"
+          }
+        }
         
         For booking with specific child name:
         {
@@ -172,14 +188,32 @@ export class OpenAIService {
           content: `Tool execution results: ${JSON.stringify(toolResponse.data.results)}`
         });
 
-        // Ask LLM for a final, user-facing response
-        const finalResponse = await openai.chat.completions.create({
-          model: config.openai.model,
-          messages: this.conversationHistory,
-          temperature: config.openai.temperature,
-          max_tokens: config.openai.maxTokens,
-        });
-        const finalText = finalResponse.choices[0]?.message?.content || 'Sorry, I could not process your request.';
+        // For care center requests, provide a natural response about what we found
+        let finalText = '';
+        if (toolCalls[0].name === 'get_care_centers') {
+          const result = toolResponse.data.results[0];
+          if (result && result.metadata) {
+            const count = result.metadata.count;
+            const zipCode = result.metadata.zip_code;
+            if (count === 0) {
+              finalText = `I couldn't find any childcare centers${zipCode !== 'all areas' ? ` in ${zipCode}` : ''}. You might want to try searching in a nearby area.`;
+            } else {
+              finalText = `I found ${count} childcare center${count !== 1 ? 's' : ''}${zipCode !== 'all areas' ? ` in ${zipCode}` : ''}! Here are the available options:`;
+            }
+          } else {
+            finalText = 'Here are the available childcare centers:';
+          }
+        } else {
+          // For other tools, ask LLM for a final response
+          const finalResponse = await openai.chat.completions.create({
+            model: config.openai.model,
+            messages: this.conversationHistory,
+            temperature: config.openai.temperature,
+            max_tokens: config.openai.maxTokens,
+          });
+          finalText = finalResponse.choices[0]?.message?.content || 'Sorry, I could not process your request.';
+        }
+        
         this.conversationHistory.push({
           role: 'assistant',
           content: finalText,

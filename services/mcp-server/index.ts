@@ -32,6 +32,24 @@ interface ToolCall {
 // Available tools
 const tools: Tool[] = [
   {
+    name: 'get_care_centers',
+    description: 'Retrieves a list of childcare centers, optionally filtered by ZIP code. Returns center information that can be displayed as cards to the user.',
+    parameters: {
+      type: 'object',
+      properties: {
+        zip_code: {
+          type: 'string',
+          description: 'The ZIP code to filter centers by (optional)'
+        },
+        user_id: {
+          type: 'string',
+          description: 'The ID of the user requesting centers (optional, used for personalized results)'
+        }
+      },
+      required: []
+    }
+  },
+  {
     name: 'create_intelligent_booking',
     description: 'Creates a childcare booking intelligently based on user request. Automatically finds suitable childcare centers in the user\'s area and matches with their dependents.',
     parameters: {
@@ -97,6 +115,40 @@ const tools: Tool[] = [
 
 // Tool implementations
 const toolImplementations: Record<string, (params: any) => Promise<any>> = {
+  get_care_centers: async (params: { 
+    zip_code?: string;
+    user_id?: string;
+  }) => {
+    try {
+      console.log('Fetching care centers with params:', params);
+      
+      const url = new URL('http://localhost:3001/centers');
+      if (params.zip_code) {
+        url.searchParams.append('zip_code', params.zip_code);
+      }
+      
+      const response = await axios.get(url.toString());
+      
+      console.log('Care centers fetched successfully:', response.data);
+      
+      // Return structured data with component rendering flag
+      return {
+        type: 'component_render',
+        component: 'care_center_cards',
+        data: response.data,
+        metadata: {
+          zip_code: params.zip_code || 'all areas',
+          count: response.data.length
+        }
+      };
+    } catch (error) {
+      console.error('Error fetching care centers:', error);
+      if (axios.isAxiosError(error) && error.response) {
+        throw new Error(error.response.data.error || 'Failed to fetch care centers');
+      }
+      throw new Error('Failed to fetch care centers');
+    }
+  },
   create_intelligent_booking: async (params: { 
     user_id: string;
     request_date?: string;

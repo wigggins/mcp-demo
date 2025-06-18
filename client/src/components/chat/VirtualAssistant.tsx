@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { ChatService } from '../../services/chat';
 import type { ChatMessage } from '../../types/chat';
+import { CareCenterCards } from './CareCenterCards';
 
 export const VirtualAssistant = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -36,8 +37,9 @@ export const VirtualAssistant = () => {
       const response = await chatService.sendMessage(inputValue);
       const assistantMessage: ChatMessage = {
         role: 'assistant',
-        content: response,
+        content: response.message,
         timestamp: new Date(),
+        component: response.component
       };
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (error) {
@@ -84,13 +86,26 @@ export const VirtualAssistant = () => {
                     }`}
                   >
                     <div
-                      className={`max-w-xs lg:max-w-md xl:max-w-lg rounded-2xl px-4 py-3 shadow-sm ${
+                      className={`${
+                        message.component ? 'max-w-2xl' : 'max-w-xs lg:max-w-md xl:max-w-lg'
+                      } rounded-2xl px-4 py-3 shadow-sm ${
                         message.role === 'user'
                           ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white ml-4'
                           : 'bg-white border border-gray-200 text-gray-800 mr-4'
                       }`}
                     >
                       <p className="text-sm leading-relaxed">{message.content}</p>
+                      
+                      {/* Render component if present */}
+                      {message.component && message.component.type === 'care_center_cards' && (
+                        <div className="mt-3">
+                          <CareCenterCards 
+                            centers={message.component.data} 
+                            metadata={message.component.metadata}
+                          />
+                        </div>
+                      )}
+                      
                       {message.timestamp && (
                         <p
                           className={`text-xs mt-2 ${

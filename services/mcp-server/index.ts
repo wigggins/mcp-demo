@@ -32,8 +32,73 @@ interface ToolCall {
 // Available tools
 const tools: Tool[] = [
   {
+    name: 'get_care_centers',
+    description: 'Retrieves a list of childcare centers, optionally filtered by ZIP code. Returns center information that can be displayed as cards to the user.',
+    parameters: {
+      type: 'object',
+      properties: {
+        zip_code: {
+          type: 'string',
+          description: 'The ZIP code to filter centers by (optional)'
+        },
+        user_id: {
+          type: 'string',
+          description: 'The ID of the user requesting centers (optional, used for personalized results)'
+        }
+      },
+      required: []
+    }
+  },
+  {
+    name: 'get_user_dependents',
+    description: 'Retrieves a list of the user\'s children/dependents. Useful when the user wants to book care but hasn\'t specified which child.',
+    parameters: {
+      type: 'object',
+      properties: {
+        user_id: {
+          type: 'string',
+          description: 'The ID of the user whose dependents to retrieve'
+        }
+      },
+      required: ['user_id']
+    }
+  },
+  {
+    name: 'create_intelligent_booking',
+    description: 'Creates a childcare booking intelligently based on user request. Automatically finds suitable childcare centers in the user\'s area and matches with their dependents.',
+    parameters: {
+      type: 'object',
+      properties: {
+        user_id: {
+          type: 'string',
+          description: 'The ID of the user making the booking request'
+        },
+        request_date: {
+          type: 'string',
+          description: 'The requested date for childcare (optional, defaults to tomorrow if not specified). Format: YYYY-MM-DD'
+        },
+        request_dates: {
+          type: 'array',
+          items: {
+            type: 'string'
+          },
+          description: 'Multiple requested dates for childcare (optional, use this for multi-day bookings). Format: ["YYYY-MM-DD", "YYYY-MM-DD"]'
+        },
+        dependent_name: {
+          type: 'string',
+          description: 'The name of the child/dependent (optional, will use first dependent if not specified)'
+        },
+        center_name: {
+          type: 'string',
+          description: 'The name of the specific childcare center to book at (optional, will auto-select if not specified)'
+        }
+      },
+      required: ['user_id']
+    }
+  },
+  {
     name: 'create_booking',
-    description: 'Creates a new booking with the specified details',
+    description: 'Creates a new booking with the specified details (legacy format)',
     parameters: {
       type: 'object',
       properties: {
@@ -75,6 +140,111 @@ const tools: Tool[] = [
 
 // Tool implementations
 const toolImplementations: Record<string, (params: any) => Promise<any>> = {
+  get_care_centers: async (params: { 
+    zip_code?: string;
+    user_id?: string;
+  }) => {
+    try {
+      console.log('Fetching care centers with params:', params);
+      
+      const url = new URL('http://localhost:3001/centers');
+      if (params.zip_code) {
+        url.searchParams.append('zip_code', params.zip_code);
+      }
+      
+      const response = await axios.get(url.toString());
+      
+      console.log('Care centers fetched successfully:', response.data);
+      
+      // Return structured data with component rendering flag
+      return {
+        type: 'component_render',
+        component: 'care_center_cards',
+        data: response.data,
+        metadata: {
+          zip_code: params.zip_code || 'all areas',
+          count: response.data.length
+        }
+      };
+    } catch (error) {
+      console.error('Error fetching care centers:', error);
+      if (axios.isAxiosError(error) && error.response) {
+        throw new Error(error.response.data.error || 'Failed to fetch care centers');
+      }
+      throw new Error('Failed to fetch care centers');
+    }
+  },
+  get_user_dependents: async (params: { 
+    user_id: string;
+  }) => {
+    try {
+      console.log('Fetching user dependents with params:', params);
+      
+      const response = await axios.get(`http://localhost:3001/users/${params.user_id}/dependents`);
+      
+      console.log('User dependents fetched successfully:', response.data);
+      
+      return {
+        dependents: response.data
+      };
+    } catch (error) {
+      console.error('Error fetching user dependents:', error);
+      if (axios.isAxiosError(error) && error.response) {
+        throw new Error(error.response.data.error || 'Failed to fetch user dependents');
+      }
+      throw new Error('Failed to fetch user dependents');
+    }
+  },
+  create_intelligent_booking: async (params: { 
+    user_id: string;
+    request_date?: string;
+    request_dates?: string[];
+    dependent_name?: string;
+    center_name?: string;
+  }) => {
+    try {
+      console.log('Creating intelligent booking with params:', params);
+      
+      const bookingPayload: any = {
+        user_id: params.user_id
+      };
+      
+      if (params.request_date) {
+        bookingPayload.request_date = params.request_date;
+      }
+      
+      if (params.request_dates) {
+        bookingPayload.request_dates = params.request_dates;
+      }
+      
+      if (params.dependent_name) {
+        bookingPayload.dependent_name = params.dependent_name;
+      }
+      
+      if (params.center_name) {
+        bookingPayload.center_name = params.center_name;
+      }
+      
+      const response = await axios.post(
+        'http://localhost:3001/bookings/intelligent',
+        bookingPayload
+      );
+      
+      console.log('Intelligent booking created successfully:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error creating intelligent booking:', error);
+      if (axios.isAxiosError(error) && error.response) {
+        // Return the full error response for better error handling
+        return {
+          error: error.response.data.error || 'Failed to create intelligent booking',
+          unavailable_dates: error.response.data.unavailable_dates,
+          available_centers: error.response.data.available_centers
+        };
+      }
+      throw new Error('Failed to create intelligent booking');
+    }
+  },
   create_booking: async (params: { 
     customerId: string;
     serviceId: string;

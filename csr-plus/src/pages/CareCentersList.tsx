@@ -1,88 +1,39 @@
 import { Link } from 'react-router-dom'
-import { Plus, Search, Filter, Star, MapPin, Phone, Mail, Eye, Edit, Trash2 } from 'lucide-react'
+import { useState } from 'react'
+import { Plus, Search, Filter, Star, MapPin, Phone, Mail, Eye, Edit, Trash2, Loader2, AlertCircle } from 'lucide-react'
+import { useCenters } from '../hooks/useApi'
 
 const CareCentersList = () => {
-  // Sample care centers data
-  const careCenters = [
-    {
-      id: 1,
-      name: "Sunshine Care Center",
-      address: "123 Main St, Springfield, IL",
-      phone: "(555) 123-4567",
-      email: "info@sunshinecare.com",
-      totalCapacity: 50,
-      currentOccupancy: 42,
-      services: ["Physical Therapy", "Occupational Therapy", "Speech Therapy"],
-      status: "active",
-      rating: 4.8,
-      manager: "Dr. Sarah Johnson"
-    },
-    {
-      id: 2,
-      name: "Green Valley Center",
-      address: "456 Oak Ave, Springfield, IL",
-      phone: "(555) 234-5678",
-      email: "contact@greenvalley.com",
-      totalCapacity: 35,
-      currentOccupancy: 28,
-      services: ["Consultation", "Diagnostic Services", "Emergency Care"],
-      status: "active",
-      rating: 4.6,
-      manager: "Dr. Michael Brown"
-    },
-    {
-      id: 3,
-      name: "Riverside Care",
-      address: "789 River Rd, Springfield, IL",
-      phone: "(555) 345-6789",
-      email: "hello@riversidecare.com",
-      totalCapacity: 40,
-      currentOccupancy: 35,
-      services: ["Long-term Care", "Rehabilitation", "Memory Care"],
-      status: "active",
-      rating: 4.9,
-      manager: "Dr. Emily Davis"
-    },
-    {
-      id: 4,
-      name: "Sunrise Medical",
-      address: "321 Sunset Blvd, Springfield, IL",
-      phone: "(555) 456-7890",
-      email: "info@sunrisemedical.com",
-      totalCapacity: 60,
-      currentOccupancy: 45,
-      services: ["Surgical Services", "ICU", "Emergency Care"],
-      status: "active",
-      rating: 4.7,
-      manager: "Dr. David Wilson"
-    },
-    {
-      id: 5,
-      name: "Harmony Health",
-      address: "654 Peace St, Springfield, IL",
-      phone: "(555) 567-8901",
-      email: "care@harmonyhealth.com",
-      totalCapacity: 30,
-      currentOccupancy: 18,
-      services: ["Mental Health", "Counseling", "Therapy"],
-      status: "maintenance",
-      rating: 4.5,
-      manager: "Dr. Lisa Garcia"
-    },
-    {
-      id: 6,
-      name: "Westside Wellness",
-      address: "987 West Ave, Springfield, IL",
-      phone: "(555) 678-9012",
-      email: "info@westsidewellness.com",
-      totalCapacity: 45,
-      currentOccupancy: 40,
-      services: ["Preventive Care", "Wellness Programs", "Nutrition"],
-      status: "active",
-      rating: 4.4,
-      manager: "Dr. Robert Martinez"
-    }
-  ]
+  const [searchZipCode, setSearchZipCode] = useState<string>('')
+  const { data: centers, loading, error, refetch } = useCenters()
+
+  const handleZipCodeFilter = (zipCode: string) => {
+    setSearchZipCode(zipCode)
+    // We'll use this for filtering client-side since API doesn't currently filter by zip
+    // In a real app, you'd want to refetch with the zip code parameter
+  }
+
+  // Filter centers by zip code if search is active
+  const filteredCenters = searchZipCode 
+    ? centers.filter(center => center.zip_code.includes(searchZipCode))
+    : centers
+
+  // Convert API data to match UI expectations
+  const careCenters = filteredCenters.map(center => ({
+    id: center.id,
+    name: center.name,
+    address: `${center.zip_code} ZIP Code Area`, // Since we don't have full address in DB
+    phone: "(555) XXX-XXXX", // Placeholder since not in DB
+    email: "contact@center.com", // Placeholder since not in DB
+    totalCapacity: center.daily_capacity,
+    currentOccupancy: Math.floor(center.daily_capacity * 0.7), // Simulated occupancy
+    services: ["Childcare Services"], // Placeholder
+    status: "active",
+    rating: 4.5 + Math.random() * 0.5, // Simulated rating
+    manager: "Center Manager", // Placeholder
+    zip_code: center.zip_code,
+    operating_days: center.operating_days || []
+  }))
 
   const getOccupancyColor = (percentage: number) => {
     if (percentage >= 90) return 'text-error-600 dark:text-error-400'
@@ -107,6 +58,62 @@ const CareCentersList = () => {
       default:
         return 'bg-gray-50 text-gray-600 dark:bg-gray-500/15 dark:text-gray-400'
     }
+  }
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-title-md font-bold text-gray-900 dark:text-white mb-2">
+              Care Centers
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400">
+              Loading care centers...
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-8 h-8 animate-spin text-brand-500" />
+        </div>
+      </div>
+    )
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-title-md font-bold text-gray-900 dark:text-white mb-2">
+              Care Centers
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400">
+              Error loading care centers
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-col items-center justify-center py-12 space-y-4">
+          <AlertCircle className="w-12 h-12 text-error-500" />
+          <div className="text-center">
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+              Failed to load care centers
+            </h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">
+              {error}
+            </p>
+            <button
+              onClick={refetch}
+              className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2.5 text-theme-sm font-medium text-white shadow-theme-xs hover:bg-brand-600 dark:bg-brand-600 dark:hover:bg-brand-700"
+            >
+              Try Again
+            </button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -154,7 +161,9 @@ const CareCentersList = () => {
           <div className="relative">
             <input
               type="text"
-              placeholder="Search centers..."
+              placeholder="Search by ZIP code..."
+              value={searchZipCode}
+              onChange={(e) => setSearchZipCode(e.target.value)}
               className="w-full bg-white border border-gray-300 rounded-lg pl-10 pr-4 py-2.5 text-theme-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:focus:ring-brand-400"
             />
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />

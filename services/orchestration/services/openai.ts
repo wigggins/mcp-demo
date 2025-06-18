@@ -49,12 +49,18 @@ export class OpenAIService {
         - Include user_id from "User data" for personalized results
         
         FOR BOOKING REQUESTS:
-        - For childcare booking requests (like "book care for my child tomorrow"), use the "create_intelligent_booking" tool
+        - For childcare booking requests (like "book care for my child tomorrow" or "book care at Sunshine Center"), use the "create_intelligent_booking" tool
         - ALWAYS extract the user_id from the "User data" provided in the conversation - this is the ID of the parent making the request
         - Parse dates from natural language (tomorrow, next Monday, etc.) into YYYY-MM-DD format
         - For dependent_name: ONLY include this if the user specifically mentions a child's name (like "book care for Emma" or "my daughter Sarah")
         - If the user says generic terms like "my child", "my kid", "my daughter" WITHOUT a specific name, do NOT include dependent_name - the system will automatically use their first child
+        - For center_name: Extract if the user mentions a specific center name (like "book at Little Angels Preschool", "Sunshine Center", "Happy Kids Daycare")
         - NEVER use the parent's name (from User data) as the dependent_name - that's the parent, not the child
+        - NEVER extract names from the parent's name field as dependent names
+        
+        FOR UNCLEAR BOOKING REQUESTS:
+        - If the user wants to book but you're unsure which child, use "get_user_dependents" first to get their children, then ask for clarification
+        - If a booking fails due to "No dependent found", use "get_user_dependents" to list their children and ask which one they meant
         
         RESPONSE FORMAT:
         - When using tools, respond with ONLY a JSON object (not an array) in this exact format:
@@ -84,6 +90,24 @@ export class OpenAIService {
           "parameters": {
             "user_id": "user-uuid-from-context",
             "request_date": "2024-01-16"
+          }
+        }
+        
+        For booking at a specific center:
+        {
+          "name": "create_intelligent_booking",
+          "parameters": {
+            "user_id": "user-uuid-from-context",
+            "request_date": "2024-01-16",
+            "center_name": "Little Angels Preschool"
+          }
+        }
+        
+        For getting user's children when unclear:
+        {
+          "name": "get_user_dependents",
+          "parameters": {
+            "user_id": "user-uuid-from-context"
           }
         }
         
@@ -204,14 +228,86 @@ export class OpenAIService {
             finalText = 'Here are the available childcare centers:';
           }
         } else {
-          // For other tools, ask LLM for a final response
-          const finalResponse = await openai.chat.completions.create({
-            model: config.openai.model,
-            messages: this.conversationHistory,
-            temperature: config.openai.temperature,
-            max_tokens: config.openai.maxTokens,
-          });
-          finalText = finalResponse.choices[0]?.message?.content || 'Sorry, I could not process your request.';
+          // Check for booking errors that need special handling
+          const result = toolResponse.data.results[0];
+          if (toolCalls[0].name === 'create_intelligent_booking' && result && result.error) {
+            if (result.error.includes('No dependent found')) {
+              // If booking failed due to no dependent found, try to get dependents and ask for clarification
+              try {
+                const userMatch = this.conversationHistory.find(msg => 
+                  msg.content.includes('User data:') && msg.role === 'system'
+                );
+                if (userMatch) {
+                  const userData = JSON.parse(userMatch.content.replace('User data: ', ''));
+                  const dependentsCall = [{
+                    name: 'get_user_dependents',
+                    parameters: { user_id: userData.id }
+                  }];
+                  
+                  const dependentsResponse = await axios.post(`${config.mcp.url}/execute`, {
+                    toolCalls: dependentsCall
+                  });
+                  
+                  const dependents = dependentsResponse.data.results[0]?.dependents || [];
+                  if (dependents.length === 0) {
+                    finalText = "I don't see any children associated with your account. You'll need to add your child's information before I can book childcare.";
+                  } else if (dependents.length === 1) {
+                    finalText = `I see you have one child: ${dependents[0].name}. Let me try booking for them instead.`;
+                    // Retry booking with the found dependent
+                    const retryCall = [{
+                      name: 'create_intelligent_booking',
+                      parameters: {
+                        ...toolCalls[0].parameters,
+                        dependent_name: dependents[0].name
+                      }
+                    }];
+                    const retryResponse = await axios.post(`${config.mcp.url}/execute`, {
+                      toolCalls: retryCall
+                    });
+                    
+                    this.conversationHistory.push({
+                      role: 'system',
+                      content: `Tool execution results: ${JSON.stringify(retryResponse.data.results)}`
+                    });
+                    
+                    const retryFinalResponse = await openai.chat.completions.create({
+                      model: config.openai.model,
+                      messages: this.conversationHistory,
+                      temperature: config.openai.temperature,
+                      max_tokens: config.openai.maxTokens,
+                    });
+                    finalText = retryFinalResponse.choices[0]?.message?.content || 'Successfully processed your booking request.';
+                  } else {
+                                         const childrenList = dependents.map((d: any) => d.name).join(', ');
+                    finalText = `I see you have multiple children: ${childrenList}. Which child would you like me to book childcare for?`;
+                  }
+                } else {
+                  finalText = "I had trouble identifying which child you'd like to book care for. Could you please specify your child's name?";
+                }
+              } catch (error) {
+                console.error('Error handling booking failure:', error);
+                finalText = "I had trouble with that booking request. Could you please specify which child you'd like to book care for?";
+              }
+            } else {
+              // For other booking errors, ask LLM for a response
+              const finalResponse = await openai.chat.completions.create({
+                model: config.openai.model,
+                messages: this.conversationHistory,
+                temperature: config.openai.temperature,
+                max_tokens: config.openai.maxTokens,
+              });
+              finalText = finalResponse.choices[0]?.message?.content || 'Sorry, I could not process your booking request.';
+            }
+          } else {
+            // For other tools, ask LLM for a final response
+            const finalResponse = await openai.chat.completions.create({
+              model: config.openai.model,
+              messages: this.conversationHistory,
+              temperature: config.openai.temperature,
+              max_tokens: config.openai.maxTokens,
+            });
+            finalText = finalResponse.choices[0]?.message?.content || 'Sorry, I could not process your request.';
+          }
         }
         
         this.conversationHistory.push({

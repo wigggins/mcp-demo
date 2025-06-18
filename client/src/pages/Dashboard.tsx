@@ -7,16 +7,25 @@ interface Dependent {
   birth_date: string;
 }
 
+interface BookingDay {
+  id: string;
+  date: string;
+  center_id: string;
+  status: string;
+  center_responded_at: string | null;
+  center_name: string;
+}
+
 interface Booking {
   id: string;
   status: string;
   created_at: string;
+  updated_at: string;
+  user_name: string;
+  user_email: string;
   dependent_name: string;
-  center_name: string;
-  booking_days: Array<{
-    date: string;
-    status: string;
-  }>;
+  dependent_birth_date: string;
+  booking_days: BookingDay[];
 }
 
 const Dashboard = () => {
@@ -121,6 +130,19 @@ const Dashboard = () => {
     });
   };
 
+  const calculateAge = (birthDate: string) => {
+    const today = new Date();
+    const birth = new Date(birthDate);
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+    
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      age--;
+    }
+    
+    return age;
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -179,34 +201,123 @@ const Dashboard = () => {
               No bookings yet. Create your first booking above!
             </div>
           ) : (
-            <ul className="divide-y divide-gray-200">
-              {bookings.slice(0, 5).map((booking) => (
-                <li key={booking.id} className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-4">
-                      <div className="flex-shrink-0">
-                        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                          <span className="text-blue-600 font-medium text-sm">
-                            {booking.dependent_name.charAt(0)}
-                          </span>
+            <div className="divide-y divide-gray-200">
+              {bookings.slice(0, 5).map((booking) => {
+                const primaryCenter = booking.booking_days[0]?.center_name || 'No center assigned';
+                const allCenters = [...new Set(booking.booking_days.map(day => day.center_name).filter(Boolean))];
+                const earliestDate = booking.booking_days.length > 0 ? 
+                  new Date(Math.min(...booking.booking_days.map(day => new Date(day.date).getTime()))) : 
+                  new Date(booking.created_at);
+                const latestDate = booking.booking_days.length > 0 ? 
+                  new Date(Math.max(...booking.booking_days.map(day => new Date(day.date).getTime()))) : 
+                  new Date(booking.created_at);
+                
+                return (
+                  <div key={booking.id} className="p-6">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-start space-x-4">
+                        <div className="flex-shrink-0">
+                          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center">
+                            <span className="text-blue-700 font-semibold text-lg">
+                              {booking.dependent_name.charAt(0)}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center space-x-2 mb-1">
+                            <h3 className="text-lg font-semibold text-gray-900">
+                              {booking.dependent_name}
+                            </h3>
+                            {booking.dependent_birth_date && (
+                              <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded">
+                                Age {calculateAge(booking.dependent_birth_date)}
+                              </span>
+                            )}
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(booking.status)}`}>
+                              {booking.status}
+                            </span>
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <div className="flex items-center space-x-4 text-sm text-gray-600">
+                              <div className="flex items-center space-x-1">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 8h1m-1-4h1m4 4h1m-1-4h1" />
+                                </svg>
+                                <span className="font-medium">{primaryCenter}</span>
+                              </div>
+                              {allCenters.length > 1 && (
+                                <span className="text-xs bg-gray-100 px-2 py-1 rounded">
+                                  +{allCenters.length - 1} more center{allCenters.length > 2 ? 's' : ''}
+                                </span>
+                              )}
+                            </div>
+                            
+                            <div className="flex items-center space-x-4 text-sm text-gray-600">
+                              <div className="flex items-center space-x-1">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                                <span>
+                                  {booking.booking_days.length === 1 ? 
+                                    formatDate(booking.booking_days[0].date) :
+                                    `${formatDate(earliestDate.toISOString())} - ${formatDate(latestDate.toISOString())}`
+                                  }
+                                </span>
+                              </div>
+                              <div className="flex items-center space-x-1">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                <span>{booking.booking_days.length} day{booking.booking_days.length !== 1 ? 's' : ''}</span>
+                              </div>
+                            </div>
+                            
+                            {booking.booking_days.length > 0 && (
+                              <div className="mt-3">
+                                <div className="flex items-center space-x-2 mb-2">
+                                  <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide">Booking Days</h4>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                                  {booking.booking_days.slice(0, 3).map((day) => (
+                                    <div key={day.id} className="flex items-center justify-between p-2 bg-gray-50 rounded text-xs">
+                                      <span className="font-medium">{formatDate(day.date)}</span>
+                                      <span className={`px-1.5 py-0.5 rounded text-xs ${
+                                        day.status === 'ACCEPTED' ? 'bg-green-100 text-green-700' :
+                                        day.status === 'DECLINED' ? 'bg-red-100 text-red-700' :
+                                        'bg-yellow-100 text-yellow-700'
+                                      }`}>
+                                        {day.status}
+                                      </span>
+                                    </div>
+                                  ))}
+                                  {booking.booking_days.length > 3 && (
+                                    <div className="flex items-center justify-center p-2 bg-gray-50 rounded text-xs text-gray-500">
+                                      +{booking.booking_days.length - 3} more
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900">
-                          {booking.dependent_name} - {booking.center_name}
-                        </p>
-                        <p className="text-sm text-gray-500">
-                          {booking.booking_days.length} day(s) - {formatDate(booking.created_at)}
-                        </p>
+                      
+                      <div className="flex-shrink-0 text-right">
+                        <div className="text-xs text-gray-500 mb-1">
+                          Created {formatDate(booking.created_at)}
+                        </div>
+                        {booking.updated_at !== booking.created_at && (
+                          <div className="text-xs text-gray-400">
+                            Updated {formatDate(booking.updated_at)}
+                          </div>
+                        )}
                       </div>
                     </div>
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(booking.status)}`}>
-                      {booking.status}
-                    </span>
                   </div>
-                </li>
-              ))}
-            </ul>
+                );
+              })}
+            </div>
           )}
         </div>
       </div>

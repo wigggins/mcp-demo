@@ -50,6 +50,20 @@ const tools: Tool[] = [
     }
   },
   {
+    name: 'get_user_dependents',
+    description: 'Retrieves a list of the user\'s children/dependents. Useful when the user wants to book care but hasn\'t specified which child.',
+    parameters: {
+      type: 'object',
+      properties: {
+        user_id: {
+          type: 'string',
+          description: 'The ID of the user whose dependents to retrieve'
+        }
+      },
+      required: ['user_id']
+    }
+  },
+  {
     name: 'create_intelligent_booking',
     description: 'Creates a childcare booking intelligently based on user request. Automatically finds suitable childcare centers in the user\'s area and matches with their dependents.',
     parameters: {
@@ -66,6 +80,10 @@ const tools: Tool[] = [
         dependent_name: {
           type: 'string',
           description: 'The name of the child/dependent (optional, will use first dependent if not specified)'
+        },
+        center_name: {
+          type: 'string',
+          description: 'The name of the specific childcare center to book at (optional, will auto-select if not specified)'
         }
       },
       required: ['user_id']
@@ -149,10 +167,32 @@ const toolImplementations: Record<string, (params: any) => Promise<any>> = {
       throw new Error('Failed to fetch care centers');
     }
   },
+  get_user_dependents: async (params: { 
+    user_id: string;
+  }) => {
+    try {
+      console.log('Fetching user dependents with params:', params);
+      
+      const response = await axios.get(`http://localhost:3001/users/${params.user_id}/dependents`);
+      
+      console.log('User dependents fetched successfully:', response.data);
+      
+      return {
+        dependents: response.data
+      };
+    } catch (error) {
+      console.error('Error fetching user dependents:', error);
+      if (axios.isAxiosError(error) && error.response) {
+        throw new Error(error.response.data.error || 'Failed to fetch user dependents');
+      }
+      throw new Error('Failed to fetch user dependents');
+    }
+  },
   create_intelligent_booking: async (params: { 
     user_id: string;
     request_date?: string;
     dependent_name?: string;
+    center_name?: string;
   }) => {
     try {
       console.log('Creating intelligent booking with params:', params);
@@ -167,6 +207,10 @@ const toolImplementations: Record<string, (params: any) => Promise<any>> = {
       
       if (params.dependent_name) {
         bookingPayload.dependent_name = params.dependent_name;
+      }
+      
+      if (params.center_name) {
+        bookingPayload.center_name = params.center_name;
       }
       
       const response = await axios.post(

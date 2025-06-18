@@ -266,7 +266,7 @@ app.get('/centers', async (req: Request, res: Response) => {
 // Intelligent booking endpoint (for orchestration layer)
 app.post('/bookings/intelligent', async (req: Request, res: Response) => {
   try {
-    const { user_id, request_date, dependent_name } = req.body;
+    const { user_id, request_date, dependent_name, center_name } = req.body;
 
     if (!user_id) {
       return res.status(400).json({ 
@@ -315,17 +315,36 @@ app.post('/bookings/intelligent', async (req: Request, res: Response) => {
       const dependent = dependentResult.rows[0];
 
       // Find centers in user's zip code
-      const centerResult = await client.query(
-        'SELECT * FROM centers WHERE zip_code = $1 ORDER BY name LIMIT 1',
-        [user.zip_code]
-      );
-
-      if (centerResult.rows.length === 0) {
-        return res.status(404).json({ 
-          error: `No childcare centers found in zip code ${user.zip_code}` 
-        });
+      let centerQuery = 'SELECT * FROM centers WHERE zip_code = $1';
+      const centerParams = [user.zip_code];
+      
+      if (center_name) {
+        // If a specific center is requested, try to find it by name
+        centerQuery += ' AND LOWER(name) LIKE LOWER($2)';
+        centerParams.push(`%${center_name}%`);
+      }
+      
+      centerQuery += ' ORDER BY name';
+      
+      if (!center_name) {
+        centerQuery += ' LIMIT 1'; // Only limit if no specific center requested
       }
 
+      const centerResult = await client.query(centerQuery, centerParams);
+
+      if (centerResult.rows.length === 0) {
+        if (center_name) {
+          return res.status(404).json({ 
+            error: `No childcare center found matching "${center_name}" in zip code ${user.zip_code}` 
+          });
+        } else {
+          return res.status(404).json({ 
+            error: `No childcare centers found in zip code ${user.zip_code}` 
+          });
+        }
+      }
+
+      // Use the first matching center (or only center if name was specified)
       const center = centerResult.rows[0];
 
       // Parse date (default to tomorrow if not provided)
